@@ -52,8 +52,6 @@ Present the options clearly:
 | **LiteSVM** | Fast unit/integration tests, CI pipelines, time-lock testing, CU profiling, account injection from devnet |
 | **Framework default** | Anchor: TypeScript with `@coral-xyz/anchor`; Native: `solana-program-test` async harness |
 
-> **Note:** LiteSVM requires GLIBC ≥ 2.38. On Ubuntu 20.04 / Debian 11, use `solana-bankrun` instead.
-
 Wait for the answer before proceeding to Step 2.
 
 ---
@@ -214,63 +212,6 @@ fn zz_cu_summary() { /* print CU table */ }
 In both cases, cover the same happy path + security/edge case matrix as above.
 Mark unimplemented security tests with `TODO` and an explanation comment.
 
-### 5e. Security Checklist
-
-Produce `security-checklist.md` with this structure:
-
-```markdown
-# Security Checklist — <ProgramName>
-
-## Risk Level
-🟢 Low | 🟡 Medium | 🔴 Critical — <one sentence justification>
-
-## Testing Approach
-<LiteSVM | solana-program-test | TypeScript/Anchor> — <one sentence on why this was chosen>
-
-## High-Risk Decisions (🔴 Critical only)
-- <Every admin key, upgrade authority, irreversible state transition — with mitigation notes>
-
-## Rules Applied
-| # | Category | Rule | Status | Notes |
-|---|----------|------|--------|-------|
-...
-
-## LiteSVM Test Coverage (if LiteSVM chosen)
-| Test | Type | Status |
-|------|------|--------|
-| test_<name>_happy_path       | Happy path   | ✅ Implemented |
-| test_<name>_wrong_signer     | Security     | ✅ Implemented |
-| test_<name>_before_deadline  | Security     | ✅ Implemented |
-| test_<name>_after_deadline   | Security     | ✅ Implemented |
-| test_<name>_reinit_fails     | Security     | 🔲 TODO |
-...
-
-## Assumptions Made
-- <List assumptions about accounts, roles, business logic>
-
-## Known Limitations / Follow-up for Auditor
-- <Anything that needs manual review, known tradeoffs, recommended extensions>
-
----
-*Generated using Frank Castle's Safe Solana Builder*
-```
-
----
-
-## Step 6 — Deliver
-
-Present files in this order:
-1. Project structure overview (short text, not a file)
-2. `lib.rs` (and additional source files for native/pinocchio)
-3. Test file
-4. `security-checklist.md`
-
-End with:
-
-> "This program was written following Frank Castle's Safe Solana Builder guidelines. The checklist above shows every security rule applied. The test file includes a scaffold for security edge cases — fill in the TODOs before mainnet. Recommend a full audit before deployment."
-
----
-
 ## Examples
 
 The `examples/` directory contains complete reference programs written to this skill's standard. Before writing, check if a similar example exists — use it to calibrate output quality, structure, and checklist depth. Do not copy-paste; treat it as a quality benchmark.
@@ -292,5 +233,5 @@ Each example folder contains:
 - **Token-2022 features (transfer hooks, confidential transfers):** Flag in the checklist as requiring extra manual review — expanded attack surface.
 - **Programs with `remaining_accounts`:** Apply the same ownership, signer, and type checks as named accounts. Flag in checklist.
 - **Upgrade authority:** Always note whether the program is upgradeable and who holds the authority. Recommend a timelock or multisig for 🔴 Critical programs.
-- **LiteSVM on older Linux:** If the developer is on Ubuntu 20.04 / Debian 11 (GLIBC < 2.38), recommend `solana-bankrun` as a drop-in alternative — same in-process model, older GLIBC compatible.
+
 - **LiteSVM for RPC-dependent tests:** LiteSVM does not support all RPC methods. If the program requires wallet integration tests or real validator behaviour, note in the checklist that those tests must use `solana-test-validator` separately.
