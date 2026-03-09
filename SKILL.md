@@ -39,9 +39,29 @@ Wait for the answer before proceeding.
 
 ---
 
+## Step 1b — Ask the Testing Question
+
+Immediately after the framework is chosen, ask:
+
+> "Should I use **LiteSVM** for testing (fast, in-process, no validator required), or the default testing approach for your framework?"
+
+Present the options clearly:
+
+| Option | Best For |
+|---|---|
+| **LiteSVM** | Fast unit/integration tests, CI pipelines, time-lock testing, CU profiling, account injection from devnet |
+| **Framework default** | Anchor: TypeScript with `@coral-xyz/anchor`; Native: `solana-program-test` async harness |
+
+> **Note:** LiteSVM requires GLIBC ≥ 2.38. On Ubuntu 20.04 / Debian 11, use `solana-bankrun` instead.
+
+Wait for the answer before proceeding to Step 2.
+
+---
+
 ## Step 2 — Load Your Reference Files
 
-Once the framework is chosen, read the following files **before writing a single line of code**:
+Once **both** the framework and testing approach are chosen, read the following files
+**before writing a single line of code**:
 
 1. **Always read first (both files):**
    - `references/shared-base.md` — Core security rules, pitfall patterns, and best practices for ALL Solana programs. Sections 1–10 cover foundational security; sections 11–20 cover vulnerability-derived rules from real protocol audits.
@@ -52,7 +72,11 @@ Once the framework is chosen, read the following files **before writing a single
    - Pinocchio → `references/pinocchio.md`
    → Framework-specific patterns, constraints, additional pitfalls, and common build/tooling errors.
 
-3. **Check for a relevant example:**
+3. **If LiteSVM was chosen for testing, also read:**
+   - `references/litesvm.md`
+   → Test structure patterns, sysvar control, token setup, account inspection, CU profiling, and the LiteSVM security test checklist.
+
+4. **Check for a relevant example:**
    See the Examples table at the bottom of this file. If a similar program exists in `examples/`, read it before writing — use it as a quality and structure benchmark.
 
 Do not skip or skim these files. They are the source of truth for this skill.
@@ -109,10 +133,11 @@ Deliver a complete, ready-to-build project structure. Not just `lib.rs` — the 
 │       └── src/
 │           └── lib.rs
 └── tests/
-    └── <program-name>.ts
+    └── <program-name>.ts           # if framework-default testing
+    └── <program-name>_tests.rs     # if LiteSVM testing
 ```
 
-**For Native Rust:**
+**For Native Rust / Pinocchio:**
 ```
 <program-name>/
 ├── Cargo.toml
@@ -122,6 +147,8 @@ Deliver a complete, ready-to-build project structure. Not just `lib.rs` — the 
     ├── processor.rs
     ├── state.rs
     └── error.rs
+tests/
+    └── <program-name>_tests.rs     # if LiteSVM testing
 ```
 
 ### 5c. The Program Code
@@ -135,24 +162,57 @@ Requirements:
 - Descriptive program-specific error types
 - Inline security comments on every non-obvious decision
 
-### 5d. Test File Skeleton
+Header comment block at the top of `lib.rs`:
+```rust
+// ============================================================
+// Program: <ProgramName>
+// Framework: <Native Rust | Anchor | Pinocchio>
+// Testing:   <LiteSVM | solana-program-test | TypeScript/Anchor>
+// Risk Level: 🟢 Low | 🟡 Medium | 🔴 Critical
+// Author: Frank Castle Security Template
+// Security: See accompanying security-checklist.md
+// ============================================================
+```
 
-Always produce a test file. For Anchor: TypeScript using `@coral-xyz/anchor`. For Native Rust: Rust integration tests using `solana-program-test`.
+### 5d. Test File
 
-The test file must cover:
+Always produce a test file. The approach depends on what was chosen in Step 1b:
 
-**Happy path tests (implement these fully):**
-- The primary success flow end-to-end
-- Any significant state transitions
+#### If LiteSVM was chosen:
 
-**Security/edge case tests (scaffold with `TODO` bodies but correct structure):**
-- Unauthorized signer attempt
-- Reinitialization attempt  
-- Duplicate mutable account attempt (if applicable)
-- Arithmetic edge cases (max values, zero amounts)
+Produce Rust tests following `references/litesvm.md`. The test file must include:
+
+**Required structure:**
+- A `setup()` function that loads the `.so`, airdrops SOL, and returns `(LiteSVM, Keypair)`
+- A `send_tx()` helper that wraps message/transaction building and calls `expire_blockhash()` after each send
+- PDA derivation helpers matching the on-chain seeds exactly
+
+**Happy path tests (implement fully):**
+- End-to-end success flow with full state assertion (lamports, token balances, account data fields)
+- Account closure verification (lamports=0, data.len()=0, owner=system_program)
+- CU consumption logged and recorded to a `CU_RESULTS` static for the `zz_cu_summary` test
+
+**Security/edge case tests (implement or scaffold with `TODO` + explanation comment):**
+- Wrong signer → `assert!(result.is_err())`
+- Re-initialization attempt → `assert!(result.is_err())`
+- Before-deadline action → `assert!(result.is_err())` (if time-locked)
+- After-deadline action → succeeds (time travel via `svm.set_sysvar(&clock)`)
+- Over-limit / zero-amount arithmetic → `assert!(result.is_err())`
 - Any program-specific edge cases flagged in the checklist
 
-Mark each TODO test with a comment explaining what it should verify and why it matters.
+**Mandatory closing test:**
+```rust
+#[test]
+fn zz_cu_summary() { /* print CU table */ }
+```
+
+#### If framework default was chosen:
+
+- Anchor: TypeScript using `@coral-xyz/anchor`
+- Native Rust: Rust integration tests using `solana-program-test`
+
+In both cases, cover the same happy path + security/edge case matrix as above.
+Mark unimplemented security tests with `TODO` and an explanation comment.
 
 ### 5e. Security Checklist
 
@@ -164,12 +224,25 @@ Produce `security-checklist.md` with this structure:
 ## Risk Level
 🟢 Low | 🟡 Medium | 🔴 Critical — <one sentence justification>
 
+## Testing Approach
+<LiteSVM | solana-program-test | TypeScript/Anchor> — <one sentence on why this was chosen>
+
 ## High-Risk Decisions (🔴 Critical only)
 - <Every admin key, upgrade authority, irreversible state transition — with mitigation notes>
 
 ## Rules Applied
 | # | Category | Rule | Status | Notes |
 |---|----------|------|--------|-------|
+...
+
+## LiteSVM Test Coverage (if LiteSVM chosen)
+| Test | Type | Status |
+|------|------|--------|
+| test_<name>_happy_path       | Happy path   | ✅ Implemented |
+| test_<name>_wrong_signer     | Security     | ✅ Implemented |
+| test_<name>_before_deadline  | Security     | ✅ Implemented |
+| test_<name>_after_deadline   | Security     | ✅ Implemented |
+| test_<name>_reinit_fails     | Security     | 🔲 TODO |
 ...
 
 ## Assumptions Made
@@ -188,7 +261,7 @@ Produce `security-checklist.md` with this structure:
 
 Present files in this order:
 1. Project structure overview (short text, not a file)
-2. `lib.rs` (and additional source files for native)
+2. `lib.rs` (and additional source files for native/pinocchio)
 3. Test file
 4. `security-checklist.md`
 
@@ -202,9 +275,9 @@ End with:
 
 The `examples/` directory contains complete reference programs written to this skill's standard. Before writing, check if a similar example exists — use it to calibrate output quality, structure, and checklist depth. Do not copy-paste; treat it as a quality benchmark.
 
-| Example | Framework | Risk Level | What it demonstrates |
-|---|---|---|---|
-| `examples/nft-whitelist-mint/` | Anchor | 🔴 Critical | MintConfig PDA, per-user WhitelistEntry PDA, double-mint guard, Metaplex CPI with program ID verification, SOL balance check around CPI, Token-2022 compatible mint, safe account close |
+| Example | Framework | Testing | Risk Level | What it demonstrates |
+|---|---|---|---|---|
+| `examples/nft-whitelist-mint/` | Anchor | TypeScript/Anchor | 🔴 Critical | MintConfig PDA, per-user WhitelistEntry PDA, double-mint guard, Metaplex CPI with program ID verification, SOL balance check around CPI, Token-2022 compatible mint, safe account close |
 
 Each example folder contains:
 - `lib.rs` — the full program
@@ -219,3 +292,5 @@ Each example folder contains:
 - **Token-2022 features (transfer hooks, confidential transfers):** Flag in the checklist as requiring extra manual review — expanded attack surface.
 - **Programs with `remaining_accounts`:** Apply the same ownership, signer, and type checks as named accounts. Flag in checklist.
 - **Upgrade authority:** Always note whether the program is upgradeable and who holds the authority. Recommend a timelock or multisig for 🔴 Critical programs.
+- **LiteSVM on older Linux:** If the developer is on Ubuntu 20.04 / Debian 11 (GLIBC < 2.38), recommend `solana-bankrun` as a drop-in alternative — same in-process model, older GLIBC compatible.
+- **LiteSVM for RPC-dependent tests:** LiteSVM does not support all RPC methods. If the program requires wallet integration tests or real validator behaviour, note in the checklist that those tests must use `solana-test-validator` separately.
