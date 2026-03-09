@@ -12,7 +12,8 @@ Built by a Solana security researcher, for Solana developers — so your code ar
 
 This is not a prompt. It is a layered reference architecture that forces Claude to:
 
-- Select the right framework (Anchor or Native Rust) and load the matching security ruleset
+- Select the right framework (Anchor, Native Rust, or Pinocchio) and load the matching security ruleset
+- Choose a testing approach (LiteSVM or framework default) and load the matching test patterns
 - Assess the program's risk level (🟢 Low / 🟡 Medium / 🔴 Critical) before touching the keyboard
 - Apply a curated set of security rules drawn from real audit findings — CPIs, PDAs, account validation, arithmetic, Token-2022, and more
 - Deliver a full project scaffold — not just `lib.rs`
@@ -39,9 +40,9 @@ For every program request, the skill outputs:
 
 | Output | Description |
 |---|---|
-| **Full project scaffold** | `Anchor.toml`, `Cargo.toml`, proper folder structure — ready to `anchor build` |
+| **Full project scaffold** | `Anchor.toml`, `Cargo.toml`, proper folder structure — ready to `anchor build` or `cargo build-sbf` |
 | **`lib.rs`** | Complete, compilable program with inline security comments |
-| **Test file** | Happy path tests implemented + security edge case tests scaffolded with `TODO` bodies |
+| **Test file** | LiteSVM or framework-default — happy path tests implemented + security edge case tests scaffolded with `TODO` bodies |
 | **`security-checklist.md`** | Every rule applied, every assumption made, every known limitation flagged |
 
 ---
@@ -54,7 +55,9 @@ safe-solana-builder/
 ├── references/
 │   ├── shared-base.md              ← Framework-agnostic rules (PDAs, CPIs, arithmetic, Token-2022...)
 │   ├── anchor.md                   ← Anchor-specific: constraints, account types, reload(), close...
-│   └── native-rust.md              ← Native Rust: manual validation sequence, invoke, deserialization...
+│   ├── native-rust.md              ← Native Rust: manual validation sequence, invoke, deserialization...
+│   ├── pinocchio.md                ← Pinocchio: zero-copy patterns, bytemuck, wincode, CPI, Shank IDL...
+│   └── litesvm.md                  ← LiteSVM: test setup, sysvar control, CU profiling, account injection...
 └── examples/
     └── nft-whitelist-mint/
         ├── lib.rs                  ← Full Anchor NFT whitelist mint program
@@ -63,7 +66,7 @@ safe-solana-builder/
 
 ### Reference Coverage
 
-The three reference files cover:
+The reference files cover:
 
 **Shared Base (framework-agnostic)**
 - Account & identity validation (signer, owner, discriminator, reinitialization)
@@ -94,6 +97,28 @@ The three reference files cover:
 - Manual 3-step safe account close
 - Custom error enum with `ProgramError` conversion
 
+**Pinocchio-specific** *(new)*
+- Zero-copy account definitions with `bytemuck` (`Pod` + `Zeroable`, explicit `_padding`, 8-byte alignment)
+- Account validation via `TryFrom` pattern and validation macros
+- `wincode` for instruction data serialization — `SchemaWrite`/`SchemaRead` derives, zero-copy deserialization for `#[repr(C)]` structs, `Pod<T>` foreign type adapter, compact-u16 / ShortVec length encoding
+- `bytemuck` vs `wincode` decision rule: bytemuck for on-chain account state, wincode for instruction data
+- CPI via `pinocchio-system` and `pinocchio-token` typed helpers
+- IDL generation with Shank + Codama
+- Entrypoint selection by CU cost (`no_allocator!`, `lazy_entrypoint!`, `entrypoint!`)
+- Pinocchio-specific build errors and toolchain notes
+
+**LiteSVM testing** *(new)*
+- In-process VM — no validator, no async runtime, fastest test loop available
+- `setup()` pattern, `send_tx()` helper with `expire_blockhash()`, `TransactionMetadata` fields
+- Devnet account injection via `svm.set_account()` + RPC client
+- Token setup with `litesvm-token` (`CreateMint`, `CreateAssociatedTokenAccount`, `MintTo`)
+- Full sysvar control: time travel (`Clock`), slot warping, rent reads
+- CU profiling with `CU_RESULTS` static and `zz_cu_summary` test
+- Simulation (dry-run without state commit)
+- Framework-specific patterns: Anchor (`InstructionData`/`ToAccountMetas`) and Native/Pinocchio (manual discriminator encoding)
+- 12-item LiteSVM security test checklist
+- Common errors table (GLIBC, `BlockhashNotFound`, missing SO, etc.)
+
 ---
 
 ## How to Install
@@ -119,10 +144,14 @@ The skill fires on any of the following:
 This skill is under active development. Planned expansions:
 
 - [ ] Native Rust example program (staking vault)
+- [x] Pinocchio framework reference — zero-copy patterns, bytemuck, wincode serialization
+- [x] LiteSVM testing reference — in-process VM, sysvar control, CU profiling
 - [ ] Additional reference sources: SPL Token-2022 extension security, Metaplex deep-dive, oracle manipulation patterns
 - [ ] Anchor v0.31+ specific patterns
 - [ ] Invariant testing guidance (Trident, Fuzz)
 - [ ] Common DeFi pattern references: AMM, lending, bonding curves
+- [ ] LiteSVM + Pinocchio worked example in `examples/`
+- [ ] LiteSVM + Anchor worked example in `examples/`
 
 The reference files are the living core of this skill. Every new vulnerability source, audit finding, or best practice I encounter gets distilled and added. The skill grows with the threat landscape.
 
